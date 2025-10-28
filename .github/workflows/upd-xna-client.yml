@@ -42,7 +42,6 @@ jobs:
 
         if ($currentVersion -eq $downloadVersion) {
           echo "Update doesn't required"
-          throw "Update doesn't required" 
         } else {
           echo "Update required"
           git config user.name "github-actions[bot]"
