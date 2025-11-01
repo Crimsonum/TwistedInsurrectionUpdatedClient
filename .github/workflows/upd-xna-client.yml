@@ -11,11 +11,11 @@ env:
   UPDATE_BRANCH_NAME: update-client-binaries
   COMMIT_MESSAGE: Update client binaries to the latest version
   PR_TITLE: Update client binaries to the version
-  PR_BODY: This is an automatic pull request to update client binaries triggered from CnCNet/xna-cncnet-client repository.
+  PR_BODY: This is an automatic pull request to update client binaries to the latest release published in [CnCNet/xna-cncnet-client](https://github.com/CnCNet/xna-cncnet-client) repository.
 
 jobs:
   publish-update-pr:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
     - name: Checkout Repo
@@ -43,8 +43,9 @@ jobs:
 
         if ($currentVersion -eq $downloadVersion)
         {
-          echo "Update doesn't required"
-        } else
+          echo "Update is not required"
+        }
+        else
         {
           echo "Update required"
           
@@ -53,8 +54,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Remove old branch if exist and make new one
-          git branch -D ${{ env.UPDATE_BRANCH_NAME }}
-          git checkout -b ${{ env.UPDATE_BRANCH_NAME }}
+          git branch -D ${{ env.UPDATE_BRANCH_NAME }}-${{ steps.download.outputs.tag_name }}
+          git checkout -b ${{ env.UPDATE_BRANCH_NAME }}-${{ steps.download.outputs.tag_name }}
         
           # Delete old binaries, unpack archive, remove archive
           rm -r -fo "D:\a\${{ env.REPO_NAME }}\${{ env.REPO_NAME }}\Resources\Binaries"
@@ -80,6 +81,27 @@ jobs:
             $deletedFiles += [Environment]::NewLine
             $deletedFiles += git diff --diff-filter=R --name-status --diff-filter=R HEAD~1 HEAD | Where-Object { $_.StartsWith('R100') } | ForEach-Object { $_.Substring(4).Trim().Split(' ')[0].Replace('/', '\') }
 
+            # If exclude is empty, ignore
+            if ($exclude.Length -ne 0)
+            {
+              # Clearing delete files from exclude path
+              $tmp = ""
+              foreach($delete_file in $deletedFiles)
+              {
+                if ($delete_file.StartsWith($exclude + '\'))
+                {
+                  $tmp += ($delete_file.Remove(0, ($exclude.Length + 1)))
+                  $tmp += [Environment]::NewLine
+                }
+                else
+                {
+                  $tmp += $delete_file
+                  $tmp += [Environment]::NewLine
+                }
+              }
+              $deletedFiles = $tmp
+            }
+
             # Check if there are any deleted files
             if ($deletedFiles.Count -eq 0)
             {
@@ -94,6 +116,7 @@ jobs:
               # Find the [Delete] section and its position
               $deleteSectionIndex = $updateexecContent_old.IndexOf("[Delete]")
 
+              # If not exist, create
               if ($deleteSectionIndex -eq -1)
               {
                 $updateexecContent_old += [Environment]::NewLine 
@@ -114,26 +137,12 @@ jobs:
                 if ($deleteSectionIndex -eq $index)
                 {
                   $updateexecContent_new += "; ${{ steps.download.outputs.tag_name }} (auto-generated entries for removed/renamed files)" + [Environment]::NewLine
+                  
                   foreach($new_delete in $deletedFiles)
                   {
-                    $file = $new_delete
-                    if ($exclude.Length -eq 0)
-                    {
-                      $file = $new_delete
-                    }
-                    else
-                    {
-                      if ($file.StartsWith($exclude + '\'))
-                      {
-                        $file = ($new_delete.Remove(0, ($exclude.Length + 1)))
-                      }
-                      else
-                      {
-                        $file = $new_delete
-                      }
-                    }
-                    $updateexecContent_new += $file + [Environment]::NewLine
+                    $updateexecContent_new += $new_delete + [Environment]::NewLine
                   }
+
                   $updateexecContent_new += "; end entries" + [Environment]::NewLine + [Environment]::NewLine
                 }
               }
@@ -147,9 +156,9 @@ jobs:
           git commit --amend -am "${{ env.COMMIT_MESSAGE }}"
 
           # Push changes
-          git push --force origin ${{ env.UPDATE_BRANCH_NAME }}
+          git push --force origin ${{ env.UPDATE_BRANCH_NAME }}-${{ steps.download.outputs.tag_name }}
 
           # Open PR
           timeout /t 10 > nul
-          gh pr create -B main -H ${{ env.UPDATE_BRANCH_NAME }} --title '${{ env.PR_TITLE }} ${{ steps.download.outputs.tag_name }}' --body '${{ env.PR_BODY }}'
+          gh pr create -B main -H ${{ env.UPDATE_BRANCH_NAME }}-${{ steps.download.outputs.tag_name }} --title '${{ env.PR_TITLE }} ${{ steps.download.outputs.tag_name }}' --body '${{ env.PR_BODY }}'
         }
